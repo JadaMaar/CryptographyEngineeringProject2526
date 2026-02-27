@@ -19,37 +19,44 @@ class Server:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.host, self.port))
             s.listen()
-            conn, addr = s.accept()
-            with conn:
-                self.tls_connection = TLSConnection(conn)
-                try:
-                    self.tls_connection.tls_handshake(conn)
-                except Exception as e:
-                    print("Error: TLS handshake failed")
-                    return
-
+            while True:  # <-- important
+                conn, addr = s.accept()
                 print(f"Connected by {addr}")
-                while True:
+                self.tls_connection = TLSConnection(conn)
+
+                with conn:
                     try:
-                        # Receive the command from the client
-                        data = self.tls_connection.receive_tls_data(conn)
-                        command = data.decode()
-                        print(f"Command received: {command}")
-
-                        # Run the command safely
-                        result = subprocess.run(command.split(), capture_output=True, text=True, shell=True)
-
-                        # Prepare output
-                        output = result.stdout
-                        if result.stderr:
-                            output += "\n[stderr]\n" + result.stderr
-
+                        self.tls_connection.tls_handshake(conn)
                     except Exception as e:
-                        # Capture any error (including invalid command)
-                        output = f"[Error executing command]: {str(e)}"
+                        print(f"Handshake failed: {e}")
+                        continue
 
-                        # Send output back to client (TLS-encrypted)
-                    self.tls_connection.send_tls_data(conn, output.encode())
+                    while True:
+                        try:
+                            data = self.tls_connection.receive_tls_data(conn)
+                            if not data:
+                                print("Client closed connection.")
+                                break
+
+                            result = subprocess.run(
+                                #["powershell", "-Command", data.decode()],
+                                data.decode().split(),
+                                capture_output=True,
+                                text=True
+                            )
+
+                            output = result.stdout
+                            if result.stderr:
+                                output += "\n[stderr]\n" + result.stderr
+
+                            self.tls_connection.send_tls_data(conn, output.encode())
+
+                        except Exception as e:
+                            try:
+                                self.tls_connection.send_tls_data(conn, f"[SERVER ERROR]\n{e}".encode())
+                            except:
+                                pass
+                            break
 
 
 

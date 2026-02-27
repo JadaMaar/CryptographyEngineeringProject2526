@@ -19,16 +19,27 @@ def send_bytes(conn, data):
 
 
 def recv_bytes(conn):
-    # read 4-byte length first
     length_bytes = b""
+
     while len(length_bytes) < 4:
-        length_bytes += conn.recv(4 - len(length_bytes))
+        chunk = conn.recv(4 - len(length_bytes))
+
+        if not chunk:
+            raise ConnectionError("Client disconnected")
+
+        length_bytes += chunk
+
     length = int.from_bytes(length_bytes, "big")
 
-    # then read exactly `length` bytes
     data = b""
     while len(data) < length:
-        data += conn.recv(length - len(data))
+        chunk = conn.recv(length - len(data))
+
+        if not chunk:
+            raise ConnectionError("Client disconnected during data transfer")
+
+        data += chunk
+
     return data
 
 class TLSConnection:
@@ -41,8 +52,8 @@ class TLSConnection:
         self.tls_ad = None
 
     def tls_handshake(self, connection) -> bool:
-        client_nonce = connection.recv(1024)
-        client_pk_bytes = connection.recv(1024)
+        client_nonce = recv_bytes(connection)
+        client_pk_bytes = recv_bytes(connection)
         client_pk = load_der_public_key(client_pk_bytes)
         print(f"Client nonce: {client_nonce}")
         print(f"Client public key: {client_pk}")
@@ -51,8 +62,8 @@ class TLSConnection:
         self.tls_sk, self.tls_pk = generate_ecdh_key_pair()
         pk_s_bytes = self.tls_pk.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
 
-        connection.sendall(self.tls_nonce)
-        connection.sendall(pk_s_bytes)
+        send_bytes(connection, self.tls_nonce)
+        send_bytes(connection, pk_s_bytes)
 
         shared_secret = compute_shared_secret(self.tls_sk, client_pk)
         derived_key = derive_key_from_shared_secret(shared_secret, b"")
@@ -82,13 +93,13 @@ class TLSConnection:
         iv, ciphertext, tag = aes_gcm_encrypt(server_ks1, message, self.tls_ad)
 
 
-        connection.sendall(iv)
-        connection.sendall(ciphertext)
-        connection.sendall(tag)
+        send_bytes(connection, iv)
+        send_bytes(connection, ciphertext)
+        send_bytes(connection, tag)
 
-        iv = connection.recv(1024)
-        ciphertext = connection.recv(4096)
-        tag = connection.recv(1024)
+        iv = recv_bytes(connection)
+        ciphertext = recv_bytes(connection)
+        tag = recv_bytes(connection)
 
         server_decrypted_message = aes_gcm_decrypt(server_kc1, iv, ciphertext, self.tls_ad, tag)
         print(f"Message decrypted by Server: {server_decrypted_message}")

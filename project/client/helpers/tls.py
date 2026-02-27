@@ -44,11 +44,11 @@ class TLSConnection:
         self.tls_sk, self.tls_pk = generate_ecdh_key_pair()
         pk_c_bytes = self.tls_pk.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
 
-        sock.sendall(self.tls_nonce)
-        sock.sendall(pk_c_bytes)
+        send_bytes(sock, self.tls_nonce)
+        send_bytes(sock, pk_c_bytes)
 
-        server_nonce = sock.recv(1024)
-        server_pk_bytes = sock.recv(1024)
+        server_nonce = recv_bytes(sock)
+        server_pk_bytes = recv_bytes(sock)
         server_pk = load_der_public_key(server_pk_bytes)
         print(f"Server nonce: {server_nonce}")
         print(f"Server public key: {server_pk}")
@@ -62,9 +62,9 @@ class TLSConnection:
         client_kc2, client_ks2 = KeySchedul2(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key)
 
         self.tls_ad = f"Alice, Bob, {server_pk_bytes}, {pk_c_bytes}".encode()
-        iv = sock.recv(1024)
-        ciphertext = sock.recv(9128)
-        tag = sock.recv(1024)
+        iv = recv_bytes(sock)
+        ciphertext = recv_bytes(sock)
+        tag = recv_bytes(sock)
 
         print(f"iv: {iv}")
         print(f"ciphertext: {ciphertext}")
@@ -96,9 +96,9 @@ class TLSConnection:
         print(f"ciphertext: {ciphertext}")
         print(f"tag: {tag}")
 
-        sock.sendall(iv)
-        sock.sendall(ciphertext)
-        sock.sendall(tag)
+        send_bytes(sock, iv)
+        send_bytes(sock, ciphertext)
+        send_bytes(sock, tag)
 
         self.kc3, self.ks3 = KeySchedul3(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key, sigma,
                                              cert, mac)
