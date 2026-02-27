@@ -3,6 +3,7 @@ import json
 import socket
 import secrets
 from hashlib import sha256
+import subprocess
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat
@@ -14,6 +15,26 @@ from project.util.crypto_util import generate_ecdh_key_pair, compute_shared_secr
     KeySchedul1, KeySchedul2, hmac_sign, KeySchedul3, aes_gcm_encrypt, aes_gcm_decrypt, hmac_verify
 
 
+def send_bytes(conn, data):
+    # send length (4 bytes) + data
+    conn.sendall(len(data).to_bytes(4, "big"))
+    conn.sendall(data)
+
+
+def recv_bytes(conn):
+    # read 4-byte length first
+    length_bytes = b""
+    while len(length_bytes) < 4:
+        length_bytes += conn.recv(4 - len(length_bytes))
+    length = int.from_bytes(length_bytes, "big")
+
+    # then read exactly `length` bytes
+    data = b""
+    while len(data) < length:
+        data += conn.recv(length - len(data))
+    return data
+
+
 class Server:
     def __init__(self, host: str, port: int):
         self.host = host
@@ -23,6 +44,7 @@ class Server:
         self.tls_nonce = None
         self.tls_pk = None
         self.tls_sk = None
+        self.tls_ad = None
 
         self.init_connection()
         print(f"Client is connecting to port {self.port}")
@@ -41,10 +63,26 @@ class Server:
 
                 print(f"Connected by {addr}")
                 while True:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-                    conn.sendall(data)
+                    try:
+                        # Receive the command from the client
+                        data = self.receive_tls_data(conn)
+                        command = data.decode()
+                        print(f"Command received: {command}")
+
+                        # Run the command safely
+                        result = subprocess.run(command.split(), capture_output=True, text=True, shell=True)
+
+                        # Prepare output
+                        output = result.stdout
+                        if result.stderr:
+                            output += "\n[stderr]\n" + result.stderr
+
+                    except Exception as e:
+                        # Capture any error (including invalid command)
+                        output = f"[Error executing command]: {str(e)}"
+
+                        # Send output back to client (TLS-encrypted)
+                    self.send_tls_data(conn, output.encode())
 
     def tls_handshake(self, connection) -> bool:
         client_nonce = connection.recv(1024)
@@ -84,8 +122,8 @@ class Server:
         print(data)
 
 
-        associated_data = b"" #f"Alice, Bob, {pk_s_bytes}, {client_pk_bytes}".encode()
-        iv, ciphertext, tag = aes_gcm_encrypt(server_ks1, message, associated_data)
+        self.tls_ad = f"Alice, Bob, {pk_s_bytes}, {client_pk_bytes}".encode()
+        iv, ciphertext, tag = aes_gcm_encrypt(server_ks1, message, self.tls_ad)
 
 
         connection.sendall(iv)
@@ -96,7 +134,7 @@ class Server:
         ciphertext = connection.recv(4096)
         tag = connection.recv(1024)
 
-        server_decrypted_message = aes_gcm_decrypt(server_kc1, iv, ciphertext, associated_data, tag)
+        server_decrypted_message = aes_gcm_decrypt(server_kc1, iv, ciphertext, self.tls_ad, tag)
         print(f"Message decrypted by Server: {server_decrypted_message}")
         server_mac_c = bytes.fromhex(server_decrypted_message.decode())
 
@@ -108,6 +146,18 @@ class Server:
 
         print("Server side TLS finished!")
         return True
+
+    def send_tls_data(self, connection, data):
+        iv, ciphertext, tag = aes_gcm_encrypt(self.ks3, data, self.tls_ad)
+        send_bytes(connection, iv)
+        send_bytes(connection, ciphertext)
+        send_bytes(connection, tag)
+
+    def receive_tls_data(self, connection):
+        iv = recv_bytes(connection)
+        ciphertext = recv_bytes(connection)
+        tag = recv_bytes(connection)
+        return aes_gcm_decrypt(self.kc3, iv, ciphertext, self.tls_ad, tag)
 
 
 if __name__ == '__main__':

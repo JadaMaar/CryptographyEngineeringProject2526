@@ -13,6 +13,26 @@ from project.util.crypto_util import generate_ecdh_key_pair, compute_shared_secr
     KeySchedul1, KeySchedul2, aes_gcm_decrypt, hmac_verify, hmac_sign, aes_gcm_encrypt, KeySchedul3
 
 
+def send_bytes(conn, data):
+    # send length (4 bytes) + data
+    conn.sendall(len(data).to_bytes(4, "big"))
+    conn.sendall(data)
+
+
+def recv_bytes(conn):
+    # read 4-byte length first
+    length_bytes = b""
+    while len(length_bytes) < 4:
+        length_bytes += conn.recv(4 - len(length_bytes))
+    length = int.from_bytes(length_bytes, "big")
+
+    # then read exactly `length` bytes
+    data = b""
+    while len(data) < length:
+        data += conn.recv(length - len(data))
+    return data
+
+
 class Client:
     def __init__(self, host: str, port: int):
         self.host = host
@@ -23,6 +43,7 @@ class Client:
         self.tls_nonce = None
         self.tls_pk = None
         self.tls_sk = None
+        self.tls_ad = None
 
         print(f"Client is connecting to port {self.port}")
 
@@ -32,6 +53,11 @@ class Client:
             self.tls_handshake(s)
             #s.sendall(b"Hello, world")
             #data = s.recv(1024)
+            while True:
+                inp = input("> ")
+                self.send_tls_data(s, inp.encode())
+                result = self.receive_tls_data(s)
+                print(result.decode())
 
     def tls_handshake(self, sock) -> bool:
         self.tls_nonce = secrets.token_bytes(32)
@@ -55,7 +81,7 @@ class Client:
         client_kc1, client_ks1 = KeySchedul1(derived_key)
         client_kc2, client_ks2 = KeySchedul2(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key)
 
-        associated_data = b"" #f"Alice, Bob, {server_pk_bytes}, {pk_c_bytes}".encode()
+        self.tls_ad = f"Alice, Bob, {server_pk_bytes}, {pk_c_bytes}".encode()
         iv = sock.recv(1024)
         ciphertext = sock.recv(9128)
         tag = sock.recv(1024)
@@ -64,7 +90,7 @@ class Client:
         print(f"ciphertext: {ciphertext}")
         print(f"tag: {tag}")
 
-        client_decrypted_message = aes_gcm_decrypt(client_ks1, iv, ciphertext, associated_data, tag)
+        client_decrypted_message = aes_gcm_decrypt(client_ks1, iv, ciphertext, self.tls_ad, tag)
 
         js = json.loads(client_decrypted_message.decode("utf-8"))
         print(js)
@@ -83,7 +109,7 @@ class Client:
 
         mac_c = hmac_sign(client_kc2,
                           sha256(self.tls_nonce + pk_c_bytes + server_nonce + server_pk_bytes + cert + b"ClientMAC").digest())
-        iv, ciphertext, tag = aes_gcm_encrypt(client_kc1, mac_c.hex(), associated_data)
+        iv, ciphertext, tag = aes_gcm_encrypt(client_kc1, mac_c.hex(), self.tls_ad)
 
         print(f"mac: {mac_c}")
         print(f"iv: {iv}")
@@ -99,6 +125,18 @@ class Client:
 
         print("Client side TLS finished!")
         return True
+
+    def send_tls_data(self, connection, data):
+        iv, ciphertext, tag = aes_gcm_encrypt(self.kc3, data, self.tls_ad)
+        send_bytes(connection, iv)
+        send_bytes(connection, ciphertext)
+        send_bytes(connection, tag)
+
+    def receive_tls_data(self, connection):
+        iv = recv_bytes(connection)
+        ciphertext = recv_bytes(connection)
+        tag = recv_bytes(connection)
+        return aes_gcm_decrypt(self.ks3, iv, ciphertext, self.tls_ad, tag)
 
 
 if __name__ == '__main__':
