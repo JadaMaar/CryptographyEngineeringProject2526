@@ -2,13 +2,10 @@ import json
 import secrets
 from hashlib import sha256
 
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat
-from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
-from project.util.cert_manager import generate_cert
-from project.util.crypto_util import aes_gcm_encrypt, KeySchedul3, hmac_sign, KeySchedul2, KeySchedul1, \
+from project.util.crypto_util import aes_gcm_encrypt, KeySchedule3, hmac_sign, KeySchedule2, KeySchedule1, \
     compute_shared_secret, derive_key_from_shared_secret, generate_ecdh_key_pair, aes_gcm_decrypt, hmac_verify
 
 def send_bytes(conn, data):
@@ -39,16 +36,16 @@ class TLSConnection:
         self.tls_sk = None
         self.tls_ad = None
 
-    def tls_handshake(self, sock) -> bool:
+    def tls_handshake(self) -> bool:
         self.tls_nonce = secrets.token_bytes(32)
         self.tls_sk, self.tls_pk = generate_ecdh_key_pair()
         pk_c_bytes = self.tls_pk.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
 
-        send_bytes(sock, self.tls_nonce)
-        send_bytes(sock, pk_c_bytes)
+        send_bytes(self.connection, self.tls_nonce)
+        send_bytes(self.connection, pk_c_bytes)
 
-        server_nonce = recv_bytes(sock)
-        server_pk_bytes = recv_bytes(sock)
+        server_nonce = recv_bytes(self.connection)
+        server_pk_bytes = recv_bytes(self.connection)
         server_pk = load_der_public_key(server_pk_bytes)
         print(f"Server nonce: {server_nonce}")
         print(f"Server public key: {server_pk}")
@@ -58,13 +55,13 @@ class TLSConnection:
         print(f"Shared secret: {shared_secret}")
         print(f"Derived key: {derived_key}")
 
-        client_kc1, client_ks1 = KeySchedul1(derived_key)
-        client_kc2, client_ks2 = KeySchedul2(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key)
+        client_kc1, client_ks1 = KeySchedule1(derived_key)
+        client_kc2, client_ks2 = KeySchedule2(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key)
 
         self.tls_ad = f"Alice, Bob, {server_pk_bytes}, {pk_c_bytes}".encode()
-        iv = recv_bytes(sock)
-        ciphertext = recv_bytes(sock)
-        tag = recv_bytes(sock)
+        iv = recv_bytes(self.connection)
+        ciphertext = recv_bytes(self.connection)
+        tag = recv_bytes(self.connection)
 
         print(f"iv: {iv}")
         print(f"ciphertext: {ciphertext}")
@@ -96,24 +93,24 @@ class TLSConnection:
         print(f"ciphertext: {ciphertext}")
         print(f"tag: {tag}")
 
-        send_bytes(sock, iv)
-        send_bytes(sock, ciphertext)
-        send_bytes(sock, tag)
+        send_bytes(self.connection, iv)
+        send_bytes(self.connection, ciphertext)
+        send_bytes(self.connection, tag)
 
-        self.kc3, self.ks3 = KeySchedul3(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key, sigma,
+        self.kc3, self.ks3 = KeySchedule3(self.tls_nonce, pk_c_bytes, server_nonce, server_pk_bytes, derived_key, sigma,
                                              cert, mac)
 
         print("Client side TLS finished!")
         return True
 
-    def send_tls_data(self, connection, data):
+    def send_tls_data(self, data):
         iv, ciphertext, tag = aes_gcm_encrypt(self.kc3, data, self.tls_ad)
-        send_bytes(connection, iv)
-        send_bytes(connection, ciphertext)
-        send_bytes(connection, tag)
+        send_bytes(self.connection, iv)
+        send_bytes(self.connection, ciphertext)
+        send_bytes(self.connection, tag)
 
-    def receive_tls_data(self, connection):
-        iv = recv_bytes(connection)
-        ciphertext = recv_bytes(connection)
-        tag = recv_bytes(connection)
+    def receive_tls_data(self):
+        iv = recv_bytes(self.connection)
+        ciphertext = recv_bytes(self.connection)
+        tag = recv_bytes(self.connection)
         return aes_gcm_decrypt(self.ks3, iv, ciphertext, self.tls_ad, tag)

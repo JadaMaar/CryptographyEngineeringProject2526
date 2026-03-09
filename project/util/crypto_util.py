@@ -155,29 +155,3 @@ def hmac_verify(key, message, tag): # Verify tag =? HMAC(key, message)
         return True
     except Exception:
         return False
-
-
-def KeySchedul1(key):
-    hs = DeriveHS(key)
-    kc1 = hkdf_expand(hs, sha256(b"ClientKE").digest())
-    ks1 = hkdf_expand(hs, sha256(b"ServerKE").digest())
-    return kc1, ks1
-
-def KeySchedul2(nonce_c, X, nonce_s, Y, key):
-    hs = DeriveHS(key)
-    ClientKC = sha256(nonce_c + X + nonce_s + Y + b"ClientKC").digest()
-    ServerKC = sha256(nonce_c + X + nonce_s + Y + b"ServerKC").digest()
-    kc2 = hkdf_expand(hs, ClientKC)
-    ks2 = hkdf_expand(hs, ServerKC)
-    return kc2, ks2
-
-def KeySchedul3(nonce_c, X, nonce_s, Y, key, sigma, cert, mac_s):
-    hs = DeriveHS(key)
-    dHS = hkdf_expand(hs, sha256(b"DHS").digest())
-    zero_bytes = b"\x00" * 32
-    MS = hkdf_expand(dHS, zero_bytes)
-    ClientSKH = sha256(nonce_c + X + nonce_s + Y + sigma + cert + mac_s + b"ClientEncK").digest()
-    ServerSKH = sha256(nonce_c + X + nonce_s + Y + sigma + cert + mac_s + b"ServerEncK").digest()
-    kc3 = hkdf_expand(MS, ClientSKH)
-    ks3 = hkdf_expand(MS, ServerSKH)
-    return kc3, ks3

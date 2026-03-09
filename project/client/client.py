@@ -1,29 +1,44 @@
 import argparse
 import socket
 from project.client.helpers.tls import TLSConnection
+from project.client.helpers.opaque import OpaqueHandler
 
 
 class Client:
     def __init__(self, host: str, port: int):
         self.host = host
         self.port = port
-        self.init_connection()
 
         self.tls_connection = None
+        self.logged_in = False
+        self.opaque = None
 
-        print(f"Client is connecting to port {self.port}")
+        self.init_connection()
 
     def init_connection(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.host, self.port))
             self.tls_connection = TLSConnection(s)
-            self.tls_connection.tls_handshake(s)
-            #s.sendall(b"Hello, world")
-            #data = s.recv(1024)
+            self.tls_connection.tls_handshake()
+            self.opaque = OpaqueHandler(self.tls_connection)
+
+            print("Welcome, please select one of the following options:\n 1) Register\n 2) Login\n 3) Exit")
+
+            while True:
+                inp = input("> ").lower()
+                if inp == "register":
+                    self.opaque.register_user()
+                elif inp == "login":
+                    self.opaque.login_user()
+                    break
+                elif inp == "exit":
+                    return
+
+            # Remote shell connection
             while True:
                 inp = input("> ")
-                self.tls_connection.send_tls_data(s, inp.encode())
-                result = self.tls_connection.receive_tls_data(s)
+                self.tls_connection.send_tls_data(inp.encode())
+                result = self.tls_connection.receive_tls_data()
                 print(result.decode())
 
 

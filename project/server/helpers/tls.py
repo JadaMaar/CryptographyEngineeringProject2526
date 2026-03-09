@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 from project.util.cert_manager import generate_cert
-from project.util.crypto_util import aes_gcm_encrypt, KeySchedul3, hmac_sign, KeySchedul2, KeySchedul1, \
+from project.util.crypto_util import aes_gcm_encrypt, KeySchedule3, hmac_sign, KeySchedule2, KeySchedule1, \
     compute_shared_secret, derive_key_from_shared_secret, generate_ecdh_key_pair, aes_gcm_decrypt, hmac_verify
 
 
@@ -51,9 +51,9 @@ class TLSConnection:
         self.tls_sk = None
         self.tls_ad = None
 
-    def tls_handshake(self, connection) -> bool:
-        client_nonce = recv_bytes(connection)
-        client_pk_bytes = recv_bytes(connection)
+    def tls_handshake(self) -> bool:
+        client_nonce = recv_bytes(self.connection)
+        client_pk_bytes = recv_bytes(self.connection)
         client_pk = load_der_public_key(client_pk_bytes)
         print(f"Client nonce: {client_nonce}")
         print(f"Client public key: {client_pk}")
@@ -62,22 +62,22 @@ class TLSConnection:
         self.tls_sk, self.tls_pk = generate_ecdh_key_pair()
         pk_s_bytes = self.tls_pk.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
 
-        send_bytes(connection, self.tls_nonce)
-        send_bytes(connection, pk_s_bytes)
+        send_bytes(self.connection, self.tls_nonce)
+        send_bytes(self.connection, pk_s_bytes)
 
         shared_secret = compute_shared_secret(self.tls_sk, client_pk)
         derived_key = derive_key_from_shared_secret(shared_secret, b"")
         print(f"Shared secret: {shared_secret}")
         print(f"Derived key: {derived_key}")
 
-        server_kc1, server_ks1 = KeySchedul1(derived_key)
-        server_kc2, server_ks2 = KeySchedul2(client_nonce, client_pk_bytes, self.tls_nonce, pk_s_bytes, derived_key)
+        server_kc1, server_ks1 = KeySchedule1(derived_key)
+        server_kc2, server_ks2 = KeySchedule2(client_nonce, client_pk_bytes, self.tls_nonce, pk_s_bytes, derived_key)
         cert = generate_cert(pk_s_bytes)
         sigma = self.tls_sk.sign(sha256(client_nonce + client_pk_bytes + self.tls_nonce + pk_s_bytes + cert).digest(),
                           ec.ECDSA(hashes.SHA256()))
         mac_s = hmac_sign(server_ks2,
                           sha256(client_nonce + client_pk_bytes + self.tls_nonce + pk_s_bytes + cert + b"ServerMAC").digest())
-        self.kc3, self.ks3 = KeySchedul3(client_nonce, client_pk_bytes, self.tls_nonce, pk_s_bytes, derived_key, sigma, cert,
+        self.kc3, self.ks3 = KeySchedule3(client_nonce, client_pk_bytes, self.tls_nonce, pk_s_bytes, derived_key, sigma, cert,
                                              mac_s)
         data = {
             "cert": cert.hex(),
@@ -93,13 +93,13 @@ class TLSConnection:
         iv, ciphertext, tag = aes_gcm_encrypt(server_ks1, message, self.tls_ad)
 
 
-        send_bytes(connection, iv)
-        send_bytes(connection, ciphertext)
-        send_bytes(connection, tag)
+        send_bytes(self.connection, iv)
+        send_bytes(self.connection, ciphertext)
+        send_bytes(self.connection, tag)
 
-        iv = recv_bytes(connection)
-        ciphertext = recv_bytes(connection)
-        tag = recv_bytes(connection)
+        iv = recv_bytes(self.connection)
+        ciphertext = recv_bytes(self.connection)
+        tag = recv_bytes(self.connection)
 
         server_decrypted_message = aes_gcm_decrypt(server_kc1, iv, ciphertext, self.tls_ad, tag)
         print(f"Message decrypted by Server: {server_decrypted_message}")
@@ -114,14 +114,14 @@ class TLSConnection:
         print("Server side TLS finished!")
         return True
 
-    def send_tls_data(self, connection, data):
+    def send_tls_data(self, data):
         iv, ciphertext, tag = aes_gcm_encrypt(self.ks3, data, self.tls_ad)
-        send_bytes(connection, iv)
-        send_bytes(connection, ciphertext)
-        send_bytes(connection, tag)
+        send_bytes(self.connection, iv)
+        send_bytes(self.connection, ciphertext)
+        send_bytes(self.connection, tag)
 
-    def receive_tls_data(self, connection):
-        iv = recv_bytes(connection)
-        ciphertext = recv_bytes(connection)
-        tag = recv_bytes(connection)
+    def receive_tls_data(self):
+        iv = recv_bytes(self.connection)
+        ciphertext = recv_bytes(self.connection)
+        tag = recv_bytes(self.connection)
         return aes_gcm_decrypt(self.kc3, iv, ciphertext, self.tls_ad, tag)

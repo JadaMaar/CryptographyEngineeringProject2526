@@ -2,7 +2,7 @@ import argparse
 import socket
 import subprocess
 
-
+from project.server.helpers.opaque import OpaqueHandler
 from project.server.helpers.tls import TLSConnection
 
 class Server:
@@ -11,6 +11,7 @@ class Server:
         self.port = port
 
         self.tls_connection = None
+        self.opaque_handler = None
 
         self.init_connection()
         print(f"Client is connecting to port {self.port}")
@@ -19,21 +20,34 @@ class Server:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.host, self.port))
             s.listen()
-            while True:  # <-- important
+            while True:
                 conn, addr = s.accept()
                 print(f"Connected by {addr}")
                 self.tls_connection = TLSConnection(conn)
 
                 with conn:
                     try:
-                        self.tls_connection.tls_handshake(conn)
+                        self.tls_connection.tls_handshake()
                     except Exception as e:
                         print(f"Handshake failed: {e}")
                         continue
 
+                    # OPAQUE login or register
+                    self.opaque_handler = OpaqueHandler(self.tls_connection)
+                    while True:
+                        data = self.tls_connection.receive_tls_data().decode()
+                        print(f"Received data: {data}")
+                        if data == "Register":
+                            self.opaque_handler.register_user()
+                        elif data == "Login":
+                            self.opaque_handler.login_user()
+                            break
+
+
+                    # Remote shell usage
                     while True:
                         try:
-                            data = self.tls_connection.receive_tls_data(conn)
+                            data = self.tls_connection.receive_tls_data()
                             if not data:
                                 print("Client closed connection.")
                                 break
@@ -49,11 +63,11 @@ class Server:
                             if result.stderr:
                                 output += "\n[stderr]\n" + result.stderr
 
-                            self.tls_connection.send_tls_data(conn, output.encode())
+                            self.tls_connection.send_tls_data(output.encode())
 
                         except Exception as e:
                             try:
-                                self.tls_connection.send_tls_data(conn, f"[SERVER ERROR]\n{e}".encode())
+                                self.tls_connection.send_tls_data(f"[SERVER ERROR]\n{e}".encode())
                             except:
                                 pass
                             break
