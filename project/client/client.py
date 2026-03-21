@@ -40,6 +40,8 @@ class Client:
             # Remote shell connection
             while True:
                 inp = input("> ")
+                if inp == "exit":
+                    return
                 self.tls_connection.send_tls_data(inp.encode())
                 result = self.tls_connection.receive_tls_data()
                 print(result.decode())

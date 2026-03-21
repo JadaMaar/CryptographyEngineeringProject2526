@@ -17,7 +17,7 @@ class OpaqueHandler:
         self.tls_connection.send_tls_data(username)
         self.tls_connection.send_tls_data(password)
         print("Wait for response")
-        response = self.tls_connection.receive_tls_data()
+        response = self.tls_connection.receive_tls_data().decode("utf-8")
         print(response)
 
     def login_user(self):
