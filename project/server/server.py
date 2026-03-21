@@ -2,7 +2,7 @@ import argparse
 import socket
 import subprocess
 
-from project.server.helpers.opaque import OpaqueHandler
+from project.server.helpers.opaque import OpaqueHandler, build_banner
 from project.server.helpers.tls import TLSConnection
 
 class Server:
@@ -46,16 +46,18 @@ class Server:
                                 break
                         elif data == "Login":
                             try:
-                                self.opaque_handler.login_user()
+                                if self.opaque_handler.login_user():
+                                    break
                             except Exception as e:
                                 failed = True
-                            break
+                                break
 
                     # Error occurred during login/register e.g. client disconnect
                     if failed:
                         continue
 
-
+                    # basic banner to show the os of the server
+                    self.tls_connection.send_tls_data(build_banner().encode())
                     # Remote shell usage
                     while True:
                         try:

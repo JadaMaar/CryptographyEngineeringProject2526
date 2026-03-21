@@ -56,7 +56,7 @@ def insert_user(username, s, lpk_c, lpk_s, lsk_s, enc_client_keys):
     conn.close()
 
 def get_user(username):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect("users.db",  timeout=1)
     cur = conn.cursor()
 
     cur.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -64,6 +64,7 @@ def get_user(username):
     conn.close()
 
     if row:
+        print(f"username: {username} found")
         return {
             "user": row[1],
             "salt": int.from_bytes(row[2], "big"),
@@ -75,4 +76,5 @@ def get_user(username):
             "client_enc_k_bundle": row[6]
         }
 
+    print(f"username: {username} not found")
     return None

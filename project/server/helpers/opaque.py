@@ -1,3 +1,7 @@
+import platform
+import socket
+import getpass
+from datetime import datetime
 from project.server.helpers.database import *
 from project.util.opaque_util import *
 
@@ -35,24 +39,29 @@ class OpaqueHandler:
         self.tls_connection.send_tls_data("Registration was successful")
 
     def login_user(self):
-        self.oprf_stage()
+        if not self.oprf_stage(): return False
         self.ake_stage()
         self.key_confirmation()
+        return True
 
     def oprf_stage(self):
         username = self.tls_connection.receive_tls_data().decode("utf-8")
+        user = get_user(username)
+        msg = b"Exists" if user else b"Doesnt Exist"
+        self.tls_connection.send_tls_data(msg)
+        if not user: return False
+
         h_pw_a = point_from_bytes(self.tls_connection.receive_tls_data())
         print(f"h_pw_a: {h_pw_a}")
 
-        user = get_user(username)
-        # TODO: error handling when user doesnt exist
         s = user["salt"]
         self.server_k_bundle = user["server_k_bundle"]
         client_enc_k_bundle = user["client_enc_k_bundle"]
-        print(f"client_enc_k_bundle: {client_enc_k_bundle}")
+        # print(f"client_enc_k_bundle: {client_enc_k_bundle}")
         h_pw_a_s = power(h_pw_a, s)
         self.tls_connection.send_tls_data(h_pw_a_s.to_bytes())
         self.tls_connection.send_tls_data(client_enc_k_bundle)
+        return True
 
     def ake_stage(self):
         epk_c = point_from_bytes(self.tls_connection.receive_tls_data())
@@ -75,3 +84,27 @@ class OpaqueHandler:
         assert server_mac_c == client_mac_c
 
         self.tls_connection.send_tls_data(server_mac_s)
+
+
+
+def build_banner():
+    hostname = socket.gethostname()
+    user = getpass.getuser()
+    os_name = platform.system()
+    os_release = platform.release()
+    os_version = platform.version()
+    arch = platform.machine()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    banner = f"""
+========================================
+ Welcome to {hostname}
+----------------------------------------
+ User:        {user}
+ OS:          {os_name} {os_release}
+ Version:     {os_version}
+ Architecture:{arch}
+ Time:        {now}
+========================================
+"""
+    return banner

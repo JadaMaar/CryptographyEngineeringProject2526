@@ -30,12 +30,17 @@ class OpaqueHandler:
 
     def oprf_stage(self):
         username = input("> Username: ")
+        self.tls_connection.send_tls_data("Login")
+        self.tls_connection.send_tls_data(username)
+        user_exists = self.tls_connection.receive_tls_data().decode("utf-8")
+        if user_exists != "Exists":
+            print(f"User {username} does not exist. Please register first.")
+            return False
+
         password = input("> Password: ")
         h_pw = h(password.encode())
         a = random_z_q()
         h_pw_a = power(h_pw, a)
-        self.tls_connection.send_tls_data("Login")
-        self.tls_connection.send_tls_data(username)
         self.tls_connection.send_tls_data(h_pw_a.to_bytes())
 
         h_pw_a_s = Point.from_bytes(Hash2Curve.P256.curve, self.tls_connection.receive_tls_data())
@@ -47,7 +52,7 @@ class OpaqueHandler:
         rw = H(password.encode() + hp_pw_s.to_bytes())
         rw_key = KDF(rw)
 
-        print(f"client_enc_bundle: {client_enc_k_bundle}")
+        # print(f"client_enc_bundle: {client_enc_k_bundle}")
 
         try:
             self.client_key_info = AEAD_decrypt(rw_key, *client_enc_k_bundle)

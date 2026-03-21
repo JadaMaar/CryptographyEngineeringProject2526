@@ -34,6 +34,9 @@ class Client:
                 elif inp == "exit":
                     return
 
+            # basic banner to show the os of the server
+            banner = self.tls_connection.receive_tls_data().decode()
+            print(banner)
             # Remote shell connection
             while True:
                 inp = input("> ")
