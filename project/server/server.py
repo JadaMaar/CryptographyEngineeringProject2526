@@ -35,13 +35,25 @@ class Server:
                     # OPAQUE login or register
                     self.opaque_handler = OpaqueHandler(self.tls_connection)
                     while True:
+                        failed = False
                         data = self.tls_connection.receive_tls_data().decode()
                         print(f"Received data: {data}")
                         if data == "Register":
-                            self.opaque_handler.register_user()
+                            try:
+                                self.opaque_handler.register_user()
+                            except Exception as e:
+                                failed = True
+                                break
                         elif data == "Login":
-                            self.opaque_handler.login_user()
+                            try:
+                                self.opaque_handler.login_user()
+                            except Exception as e:
+                                failed = True
                             break
+
+                    # Error occurred during login/register e.g. client disconnect
+                    if failed:
+                        continue
 
 
                     # Remote shell usage
@@ -53,8 +65,8 @@ class Server:
                                 break
 
                             result = subprocess.run(
-                                #["powershell", "-Command", data.decode()],
                                 data.decode().split(),
+                                shell=True,
                                 capture_output=True,
                                 text=True
                             )
