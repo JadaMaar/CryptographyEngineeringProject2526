@@ -5,6 +5,7 @@ from hashlib import sha256
 from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
+from project.util.cert_manager import verify_cert
 from project.util.crypto_util import aes_gcm_encrypt, KeySchedule3, hmac_sign, KeySchedule2, KeySchedule1, \
     compute_shared_secret, derive_key_from_shared_secret, generate_ecdh_key_pair, aes_gcm_decrypt, hmac_verify
 
@@ -75,6 +76,7 @@ class TLSConnection:
         sigma = bytes.fromhex(js["sigma"])
         mac = bytes.fromhex(js["mac"])
 
+        assert verify_cert(server_pk_bytes, cert) == True
 
         print(f"cert: {cert}")
         print(f"sigma: {sigma}")

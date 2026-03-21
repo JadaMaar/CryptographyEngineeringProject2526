@@ -88,6 +88,9 @@ class TLSConnection:
 
         print(data)
 
+        print(f"server_pk: {pk_s_bytes}")
+        print(f"cert: {cert}")
+
 
         self.tls_ad = f"Alice, Bob, {pk_s_bytes}, {client_pk_bytes}".encode()
         iv, ciphertext, tag = aes_gcm_encrypt(server_ks1, message, self.tls_ad)
