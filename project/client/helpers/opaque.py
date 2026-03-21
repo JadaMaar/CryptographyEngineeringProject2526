@@ -21,9 +21,12 @@ class OpaqueHandler:
         print(response)
 
     def login_user(self):
-        self.oprf_stage()
+        pass_correct = self.oprf_stage()
+        if not pass_correct: return False
         self.ake_stage()
-        self.key_confirmation()
+        key_correct = self.key_confirmation()
+        if not key_correct: return False
+        return True
 
     def oprf_stage(self):
         username = input("> Username: ")
@@ -51,7 +54,8 @@ class OpaqueHandler:
             self.client_key_info = bytes_to_dict(self.client_key_info)
         except:
             print("Invalid Tag. Password was incorrect!")
-            exit(1)
+            return False
+        return True
 
     def ake_stage(self):
         epk_c, esk_c = AKE_KeyGen()
@@ -74,4 +78,8 @@ class OpaqueHandler:
         self.tls_connection.send_tls_data(client_mac_c)
         server_mac_s = self.tls_connection.receive_tls_data()
 
-        assert client_mac_s == server_mac_s
+        if client_mac_s == server_mac_s:
+            return True
+        else:
+            print("Server MAC was incorrect!")
+            return False
