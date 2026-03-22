@@ -45,18 +45,16 @@ class OpaqueHandler:
         return True
 
     def oprf_stage(self):
+        print("OPRF stage")
         username = self.tls_connection.receive_tls_data().decode("utf-8")
         user = get_user(username)
-        msg = b"Exists" if user else b"Doesnt Exist"
-        self.tls_connection.send_tls_data(msg)
-        if not user: return False
 
         h_pw_a = point_from_bytes(self.tls_connection.receive_tls_data())
         print(f"h_pw_a: {h_pw_a}")
 
-        s = user["salt"]
-        self.server_k_bundle = user["server_k_bundle"]
-        client_enc_k_bundle = user["client_enc_k_bundle"]
+        s = user.get("salt", 0)
+        self.server_k_bundle = user.get("server_k_bundle", {"lsk_s": None, "lpk_c": None, "lpk_s": None})
+        client_enc_k_bundle = user.get("client_enc_k_bundle", pickle.dumps(b"dummy"))
         # print(f"client_enc_k_bundle: {client_enc_k_bundle}")
         h_pw_a_s = power(h_pw_a, s)
         self.tls_connection.send_tls_data(h_pw_a_s.to_bytes())
@@ -64,6 +62,7 @@ class OpaqueHandler:
         return True
 
     def ake_stage(self):
+        print("AKE stage")
         epk_c = point_from_bytes(self.tls_connection.receive_tls_data())
         epk_s, esk_s = AKE_KeyGen()
         b = self.server_k_bundle["lsk_s"]
@@ -75,15 +74,16 @@ class OpaqueHandler:
         self.tls_connection.send_tls_data(epk_s.to_bytes())
 
     def key_confirmation(self):
+        print("Key confirmation")
         client_mac_c = self.tls_connection.receive_tls_data()
         key = hkdf_expand(self.SK_server, b"Key Confirmation", 32 * 2)
         ServerK_c, ServerK_s = key[:32], key[32:]
         server_mac_c = HMAC(ServerK_c, b"Client KC")
         server_mac_s = HMAC(ServerK_s, b"Server KS")
 
-        assert server_mac_c == client_mac_c
-
         self.tls_connection.send_tls_data(server_mac_s)
+
+        assert server_mac_c == client_mac_c
 
 
 

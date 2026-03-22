@@ -29,7 +29,10 @@ class Client:
                 if inp == "register":
                     self.opaque.register_user()
                 elif inp == "login":
-                    if self.opaque.login_user():
+                    err_msg = self.opaque.login_user()
+                    if err_msg:
+                        print(err_msg)
+                    else:
                         break
                 elif inp == "exit":
                     return

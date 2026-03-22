@@ -1,5 +1,8 @@
 import pickle
 
+from cryptography.hazmat.primitives.asymmetric import x25519
+
+from project.util.Hash2Curve import Create_P256_point, hash_to_curve
 from project.util.opaque_util import *
 
 
@@ -21,21 +24,15 @@ class OpaqueHandler:
         print(response)
 
     def login_user(self):
-        pass_correct = self.oprf_stage()
-        if not pass_correct: return False
+        oprf_msg = self.oprf_stage()
         self.ake_stage()
-        key_correct = self.key_confirmation()
-        if not key_correct: return False
-        return True
+        kc_msg = self.key_confirmation()
+        if oprf_msg or kc_msg: return oprf_msg if oprf_msg else kc_msg
 
     def oprf_stage(self):
         username = input("> Username: ")
         self.tls_connection.send_tls_data("Login")
         self.tls_connection.send_tls_data(username)
-        user_exists = self.tls_connection.receive_tls_data().decode("utf-8")
-        if user_exists != "Exists":
-            print(f"User {username} does not exist. Please register first.")
-            return False
 
         password = input("> Password: ")
         h_pw = h(password.encode())
@@ -58,18 +55,21 @@ class OpaqueHandler:
             self.client_key_info = AEAD_decrypt(rw_key, *client_enc_k_bundle)
             self.client_key_info = bytes_to_dict(self.client_key_info)
         except:
-            print("Invalid Tag. Password was incorrect!")
-            return False
-        return True
+            return "Invalid Tag. Username or Password was incorrect!"
 
     def ake_stage(self):
         epk_c, esk_c = AKE_KeyGen()
         self.tls_connection.send_tls_data(epk_c.to_bytes())
 
         epk_s = point_from_bytes(self.tls_connection.receive_tls_data())
-        a = self.client_key_info["lsk_c"]
+        if self.client_key_info:
+            a = self.client_key_info["lsk_c"]
+            B = self.client_key_info["lpk_s"]
+        else:
+            # use dummy values if none were send
+            B, a = AKE_KeyGen()
+        print(B)
         x = esk_c
-        B = self.client_key_info["lpk_s"]
         Y = epk_s
         self.SK_client = KClient(a, x, B, Y)
         print("SK Client: " + self.SK_client.hex())
@@ -84,7 +84,6 @@ class OpaqueHandler:
         server_mac_s = self.tls_connection.receive_tls_data()
 
         if client_mac_s == server_mac_s:
-            return True
+            return
         else:
-            print("Server MAC was incorrect!")
-            return False
+            return "Server MAC was incorrect!"

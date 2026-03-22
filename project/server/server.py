@@ -35,6 +35,7 @@ class Server:
                     # OPAQUE login or register
                     self.opaque_handler = OpaqueHandler(self.tls_connection)
                     while True:
+                        print("Wait for command")
                         failed = False
                         data = self.tls_connection.receive_tls_data().decode()
                         print(f"Received data: {data}")
@@ -50,7 +51,7 @@ class Server:
                                     break
                             except Exception as e:
                                 failed = True
-                                break
+                                # break
 
                     # Error occurred during login/register e.g. client disconnect
                     if failed:
