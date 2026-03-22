@@ -28,6 +28,8 @@ class Server:
                 with conn:
                     try:
                         self.tls_connection.tls_handshake()
+                    except socket.timeout:
+                        print("Receive timed out")
                     except Exception as e:
                         print(f"Handshake failed: {e}")
                         continue
@@ -37,7 +39,15 @@ class Server:
                     while True:
                         print("Wait for command")
                         failed = False
-                        data = self.tls_connection.receive_tls_data().decode()
+                        try:
+                            data = self.tls_connection.receive_tls_data().decode()
+                        except ConnectionError as e:
+                            print(e)
+                            failed = True
+                            break
+                        except Exception as e:
+                            print(e)
+
                         print(f"Received data: {data}")
                         if data == "Register":
                             try:
@@ -49,6 +59,10 @@ class Server:
                             try:
                                 if self.opaque_handler.login_user():
                                     break
+                            except socket.timeout:
+                                print("Receive timed out")
+                                failed = True
+                                break
                             except Exception as e:
                                 failed = True
                                 # break

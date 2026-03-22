@@ -52,6 +52,9 @@ class TLSConnection:
         self.tls_ad = None
 
     def tls_handshake(self) -> bool:
+        # enable timeout during handshake
+        self.connection.settimeout(5)
+
         client_nonce = recv_bytes(self.connection)
         client_pk_bytes = recv_bytes(self.connection)
         client_pk = load_der_public_key(client_pk_bytes)
@@ -109,6 +112,9 @@ class TLSConnection:
         server_mac_c = bytes.fromhex(server_decrypted_message.decode())
 
         print(f"mac: {server_mac_c}")
+
+        # disable timeout at the end of handshake (before assert in case of error)
+        self.connection.settimeout(None)
 
         assert hmac_verify(server_kc2,
                            sha256(client_nonce + client_pk_bytes + self.tls_nonce + pk_s_bytes + cert + b"ClientMAC").digest(),

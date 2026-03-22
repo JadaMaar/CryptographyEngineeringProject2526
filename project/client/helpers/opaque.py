@@ -31,13 +31,13 @@ class OpaqueHandler:
 
     def oprf_stage(self):
         username = input("> Username: ")
-        self.tls_connection.send_tls_data("Login")
-        self.tls_connection.send_tls_data(username)
-
         password = input("> Password: ")
         h_pw = h(password.encode())
         a = random_z_q()
         h_pw_a = power(h_pw, a)
+
+        self.tls_connection.send_tls_data("Login")
+        self.tls_connection.send_tls_data(username)
         self.tls_connection.send_tls_data(h_pw_a.to_bytes())
 
         h_pw_a_s = Point.from_bytes(Hash2Curve.P256.curve, self.tls_connection.receive_tls_data())
@@ -68,7 +68,6 @@ class OpaqueHandler:
         else:
             # use dummy values if none were send
             B, a = AKE_KeyGen()
-        print(B)
         x = esk_c
         Y = epk_s
         self.SK_client = KClient(a, x, B, Y)

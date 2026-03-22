@@ -14,8 +14,10 @@ class OpaqueHandler:
 
     def register_user(self):
         print("Wait for Username and Password")
+        self.tls_connection.connection.settimeout(5)
         username = self.tls_connection.receive_tls_data().decode("utf-8")
         password = self.tls_connection.receive_tls_data().decode("utf-8")
+        self.tls_connection.connection.settimeout(None)
 
         print("Check for existing User")
         user = get_user(username)
@@ -39,7 +41,8 @@ class OpaqueHandler:
         self.tls_connection.send_tls_data("Registration was successful")
 
     def login_user(self):
-        if not self.oprf_stage(): return False
+        self.tls_connection.connection.settimeout(5)
+        self.oprf_stage()
         self.ake_stage()
         self.key_confirmation()
         return True
@@ -59,7 +62,6 @@ class OpaqueHandler:
         h_pw_a_s = power(h_pw_a, s)
         self.tls_connection.send_tls_data(h_pw_a_s.to_bytes())
         self.tls_connection.send_tls_data(client_enc_k_bundle)
-        return True
 
     def ake_stage(self):
         print("AKE stage")
@@ -82,7 +84,8 @@ class OpaqueHandler:
         server_mac_s = HMAC(ServerK_s, b"Server KS")
 
         self.tls_connection.send_tls_data(server_mac_s)
-
+        # reset timeout before the assert in case of an error
+        self.tls_connection.connection.settimeout(None)
         assert server_mac_c == client_mac_c
 
 
